@@ -172,6 +172,11 @@ println("\n3 atribut bertipe real dengan perbedaan rata-rata tertinggi:")
 println(top_3_diff)
 println("Atribut yang dipilih: ", selected_real_attributes)
 
+# Simpan DataFrame yang dipilih ke CSV untuk digunakan di file lain
+df_selected = select(data_latih, selected_real_attributes)
+CSV.write("selected_data.csv", df_selected)
+println("DataFrame yang dipilih disimpan sebagai 'selected_data.csv'")
+
 # ==================== ANALISIS STATISTIKA DESKRIPTIF DAN DISTRIBUSI KONTINU (1b) ====================
 
 function descriptive_stats(data, col_name)
