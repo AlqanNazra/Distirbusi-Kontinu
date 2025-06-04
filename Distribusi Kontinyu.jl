@@ -51,7 +51,7 @@ if !("class" in names(data_latih))
 end
 
 # Periksa distribusi label awal
-println("\nDistribusi label awal di data_latih:")
+println("\nDistribusi label di data_latih:")
 try
     println(combine(groupby(data_latih, :class), nrow => :count))
 catch e
@@ -59,17 +59,9 @@ catch e
     rethrow(e)
 end
 
-# Standarisasi label: normal = 0, anomaly = 1
-data_latih.label_num = map(x -> x == "normal" ? 0 : 1, data_latih.class)
-
-# Periksa distribusi label_num setelah standarisasi
-println("\nDistribusi label_num setelah standarisasi (0 = normal, 1 = anomaly):")
-println("  Normal (0): ", sum(data_latih.label_num .== 0))
-println("  Anomaly (1): ", sum(data_latih.label_num .== 1))
-
-# Peringatan jika semua label_num adalah 0
-if sum(data_latih.label_num .== 1) == 0
-    println("Peringatan: Semua data memiliki label_num = 0 (Normal). Korelasi dengan label_num mungkin tidak bermakna.")
+# Peringatan jika semua data memiliki label yang sama
+if length(unique(data_latih.class)) == 1
+    println("Peringatan: Semua data memiliki label class yang sama. Analisis hubungan mungkin tidak bermakna.")
 end
 
 # Tentukan kolom kategorikal berdasarkan nama yang benar
@@ -90,7 +82,7 @@ end
 # Tangani nilai missing di kolom class
 data_latih.class = coalesce.(data_latih.class, "normal")
 
-# Pilih kolom numerik untuk analisis korelasi
+# Pilih kolom numerik untuk analisis
 global numeric_df = nothing
 try
     global numeric_df = select(data_latih, Not(categorical_cols))
@@ -121,12 +113,12 @@ end
 # Periksa kolom dengan variansi nol
 for col in names(numeric_df)
     if var(numeric_df[!, col]) == 0
-        println("Peringatan: Kolom $col memiliki variansi nol, akan diabaikan untuk korelasi.")
+        println("Peringatan: Kolom $col memiliki variansi nol, akan diabaikan.")
         global numeric_df = select(numeric_df, Not(col))
     end
 end
 
-# Hitung matriks korelasi
+# Hitung matriks korelasi antar atribut numerik
 cor_matrix = cor(Matrix(numeric_df))
 if any(isnan, cor_matrix) || any(ismissing, cor_matrix)
     println("Peringatan: Matriks korelasi mengandung NaN atau nilai missing. Mengganti NaN dengan 0.0.")
@@ -134,26 +126,50 @@ if any(isnan, cor_matrix) || any(ismissing, cor_matrix)
 end
 println("\nMatriks korelasi untuk atribut bertipe real:\n", cor_matrix)
 
-# ==================== ANALISIS KORELASI (1a) ====================
+# ==================== ANALISIS HUBUNGAN DENGAN CLASS (1a) ====================
 
-# Hitung korelasi dengan label_num sebagai vektor
-label_corr = [cor(numeric_df[!, col], data_latih.label_num) for col in names(numeric_df)]
-label_corr = replace(label_corr, NaN => 0.0)  # Ganti NaN dengan 0.0
+# Analisis hubungan antara atribut numerik dan class (kategorikal)
+# Menggunakan statistik deskriptif per kelas sebagai pengganti korelasi
+println("\nAnalisis hubungan atribut numerik dengan class (normal/anomaly):")
+for col in names(numeric_df)
+    println("\nStatistik untuk $col berdasarkan class:")
+    for class_val in ["normal", "anomaly"]
+        subset = data_latih[data_latih.class .== class_val, col]
+        if !isempty(subset)
+            println("  Class $class_val:")
+            println("    Rata-rata: ", mean(subset))
+            println("    Median: ", median(subset))
+            println("    Standar Deviasi: ", std(subset))
+            println("    Minimum: ", minimum(subset))
+            println("    Maksimum: ", maximum(subset))
+        else
+            println("  Class $class_val: Tidak ada data.")
+        end
+    end
+end
 
-# Buat DataFrame untuk korelasi
-corr_df = DataFrame(attribute = names(numeric_df), correlation = label_corr)
+# Pilih 3 atribut numerik dengan perbedaan rata-rata terbesar antar kelas
+diff_means = DataFrame(attribute = names(numeric_df), diff_mean = zeros(Float64, length(names(numeric_df))))
+for (i, col) in enumerate(names(numeric_df))
+    normal_subset = data_latih[data_latih.class .== "normal", col]
+    anomaly_subset = data_latih[data_latih.class .== "anomaly", col]
+    if !isempty(normal_subset) && !isempty(anomaly_subset)
+        diff_means.diff_mean[i] = abs(mean(normal_subset) - mean(anomaly_subset))
+    else
+        diff_means.diff_mean[i] = 0.0
+    end
+end
 
-# Urutkan berdasarkan nilai absolut korelasi
-sort!(corr_df, :correlation, by = abs, rev = true)
+# Urutkan berdasarkan perbedaan rata-rata
+sort!(diff_means, :diff_mean, rev=true)
+println("\nPerbedaan rata-rata atribut numerik antar kelas (normal vs anomaly):")
+println(diff_means)
 
-println("\nKorelasi atribut bertipe real dengan label_num:")
-println(corr_df)
-
-# Pilih 3 atribut real dengan korelasi absolut tertinggi
-top_3_real_corr = first(corr_df, 3)
-selected_real_attributes = top_3_real_corr.attribute
-println("\n3 atribut bertipe real dengan korelasi absolut tertinggi:")
-println(top_3_real_corr)
+# Pilih 3 atribut dengan perbedaan rata-rata tertinggi
+top_3_diff = first(diff_means, 3)
+selected_real_attributes = top_3_diff.attribute
+println("\n3 atribut bertipe real dengan perbedaan rata-rata tertinggi:")
+println(top_3_diff)
 println("Atribut yang dipilih: ", selected_real_attributes)
 
 # ==================== ANALISIS STATISTIKA DESKRIPTIF DAN DISTRIBUSI KONTINU (1b) ====================
