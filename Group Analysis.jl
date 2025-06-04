@@ -38,7 +38,7 @@ function buat_data_berkelompok(df, kolom, jumlah_kelas=10)
     temp_df = DataFrame(group=kelompok)
     frekuensi_df = combine(groupby(temp_df, :group), nrow => :Frekuensi)
 
-    complete_df = DataFrame(Interval=string.(levels_kelompok))  # Label untuk bar chart
+    complete_df = DataFrame(Interval=string.(levels_kelompok))  # Label interval
     complete_df.Frekuensi = [get(frekuensi_df[frekuensi_df.group .== i, :Frekuensi], 1, 0) for i in levels_kelompok]
 
     return complete_df, bins
@@ -57,18 +57,20 @@ for col in selected_attributes
     CSV.write("frekuensi_$col.csv", tabel)
     println("Tabel frekuensi disimpan sebagai 'frekuensi_$col.csv'")
 
-    # Ganti histogram dengan bar chart dari data berkelompok
+    # Hitung titik tengah setiap interval untuk sumbu X
+    midpoints = [(bins[i] + bins[i+1]) / 2 for i in 1:length(bins)-1]
+
+    # Buat bar chart berdasarkan titik tengah
     bar(
-        frekuensi.Interval,
+        midpoints,
         frekuensi.Frekuensi,
         title="Histogram Data Berkelompok: $col",
-        xlabel="Interval",
+        xlabel=col,
         ylabel="Frekuensi",
         legend=false,
-        bar_width=0.9,
-        xticks=:auto,
-        rotation=45,           # Agar label interval tidak saling tumpuk
-        size=(800, 400)        # Ukuran gambar lebih lebar
+        bar_width=diff(bins)[1],
+        xticks=(bins, string.(round.(bins, digits=1))),
+        size=(800, 400)
     )
     savefig("histogram_$col.png")
     println("Histogram disimpan sebagai 'histogram_$col.png'")
